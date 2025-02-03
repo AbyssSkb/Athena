@@ -9,20 +9,22 @@ import os
 
 # 加载环境变量
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-base_url = os.getenv("OPENAI_BASE_URL")
-chat_model = os.getenv("OPENAI_MODEL")
-access_key = os.getenv("PICOVOICE_ACCESS_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+chat_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+picovoice_access_key = os.getenv("PICOVOICE_ACCESS_KEY")
+recognizer_engine = os.getenv("RECOGNIZER_ENGINE", "google")
 
 # 初始化
-engine = pyttsx3.init()
-voices = engine.getProperty("voices")
-engine.setProperty("voice", voices[-1].id)
-porcupine = pvporcupine.create(keywords=["hey siri"], access_key=access_key)
+tts_engine = pyttsx3.init()
+voices = tts_engine.getProperty("voices")
+tts_engine.setProperty("voice", voices[-1].id)
+porcupine = pvporcupine.create(keywords=["hey siri"], access_key=picovoice_access_key)
 recognizer = sr.Recognizer()
-client = OpenAI(
-    api_key=api_key,
-    base_url=base_url,
+recognizer.operation_timeout = 5
+chat_client = OpenAI(
+    api_key=openai_api_key,
+    base_url=openai_base_url,
 )
 conversation_history = []
 
@@ -79,9 +81,22 @@ def listen_for_commands() -> str:
     with sr.Microphone() as source:
         recognizer.adjust_for_ambient_noise(source)
         audio = recognizer.listen(source, timeout=20)
+    print("收到指令")
 
-    command = recognizer.recognize_google(audio, language="zh-CN")
-    print(f"你: {command}")
+    match recognizer_engine:
+        case "google":
+            command = recognizer.recognize_google(audio, language="zh-CN")
+        case "azure":
+            azure_key = os.getenv("AZURE_KEY")
+            azure_location = os.getenv("AZURE_LOCATION", "eastus")
+            command = recognizer.recognize_azure(
+                audio,
+                key=azure_key,
+                location=azure_location,
+                language="zh-CN",
+            )[0]
+
+    print(f"User: {command}")
     return command
 
 
@@ -97,11 +112,11 @@ def speak(sentence: str):
 
     Example:
         >>> speak("你好")
-        助手：你好
+        Assistant: 你好
     """
-    print(f"助手：{sentence}")
-    engine.say(sentence)
-    engine.runAndWait()
+    print(f"Assistant: {sentence}")
+    tts_engine.say(sentence)
+    tts_engine.runAndWait()
 
 
 def get_model_response(user_input: str) -> str:
@@ -123,7 +138,7 @@ def get_model_response(user_input: str) -> str:
     conversation_history.append({"role": "user", "content": user_input})
 
     try:
-        response = client.chat.completions.create(
+        response = chat_client.chat.completions.create(
             model=chat_model,
             messages=conversation_history,
         )
