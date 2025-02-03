@@ -1,0 +1,14 @@
+[project]
+name = "Athena"
+version = "0.1.0"
+description = "A Chinese voice assistant powered by OpenAI's GPT and Python text-to-speech technology, featuring wake word detection."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.2.2",
+    "openai>=1.61.0",
+    "pvporcupine>=3.0.4",
+    "python-dotenv>=1.0.1",
+    "pyttsx3>=2.98",
+    "speechrecognition[audio]>=3.14.1",
+]
