@@ -6,6 +6,9 @@ import pyaudio
 from dotenv import load_dotenv
 from openai import OpenAI
 from duckduckgo_search import DDGS
+from bs4 import BeautifulSoup
+import asyncio
+import httpx
 import json
 import os
 
@@ -51,36 +54,88 @@ tools = [
 ]
 
 
-def search_duckduckgo(keywords: list[str]):
+async def fetch_url(url: str):
     """
-    使用 DuckDuckGo 搜索引擎执行查询。
+    异步获取指定URL的网页内容并提取文本。
 
     Parameters:
-        keywords (list): 搜索关键词列表
+        url (str): 要获取内容的网页URL
 
     Returns:
-        list: 搜索结果列表，每个结果包含标题、链接和摘要
+        str: 提取的网页文本内容，经过清理和格式化
+
+    Raises:
+        httpx.RequestError: 当请求失败时抛出
+    """
+    async with httpx.AsyncClient() as client:
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 Edg/132.0.0.0"
+            }
+            response = await client.get(url, headers=headers)
+            html = response.text
+            soup = BeautifulSoup(html, "html.parser")
+            text = soup.get_text()
+            text = "\n".join(
+                [line.strip() for line in text.splitlines() if line.strip()]
+            )
+            return text
+        except httpx.RequestError as exc:
+            print(f"An error occurred while requesting {exc.request.url!r}.")
+
+
+async def crawl_web(urls: list[str]):
+    """
+    并发爬取多个URL的内容。
+
+    Parameters:
+        urls (list[str]): 要爬取的URL列表
+
+    Returns:
+        list: 所有URL的爬取结果列表
+    """
+    results = await asyncio.gather(*(fetch_url(url) for url in urls))
+    return results
+
+
+def search_duckduckgo(keywords: list[str]):
+    """
+    使用 DuckDuckGo 搜索引擎执行查询并获取详细内容。
+
+    Parameters:
+        keywords (list[str]): 搜索关键词列表
+
+    Returns:
+        list: 搜索结果页面的完整文本内容列表
 
     Example:
         >>> search_duckduckgo(['Python', '机器学习'])
+        ['页面1的文本内容', '页面2的文本内容', ...]
     """
     search_term = " ".join(keywords)
     print(f"Searching: {search_term}")
     results = DDGS().text(
-        keywords=search_term, region="cn-zh", safesearch="on", max_results=5
+        keywords=search_term,
+        region="cn-zh",
+        safesearch="on",
+        max_results=5,
+        backend="html",
     )
     for i, result in enumerate(results, start=1):
         print(f"Result {i}")
-        print(result['title'])
-        print(result['href'])
-        print(result['body'])
+        print(result["title"])
+        print(result["href"])
+        print(result["body"])
         print()
-    return results
+
+    urls = [result["href"] for result in results]
+    response_results = asyncio.run(crawl_web(urls))
+    return response_results
 
 
 def call_function(name: str, args: dict[str, str]):
     """
-    根据函数名和参数调用相应的工具函数。
+    根据函数名和参数动态调用工具函数。
 
     Parameters:
         name (str): 要调用的函数名
@@ -88,6 +143,9 @@ def call_function(name: str, args: dict[str, str]):
 
     Returns:
         Any: 函数调用的结果
+
+    Raises:
+        ValueError: 当指定的函数名不存在时抛出
     """
     if name == "search_duckduckgo":
         return search_duckduckgo(**args)
@@ -130,17 +188,17 @@ def listen_for_commands() -> str:
     """
     监听并转换用户的语音指令为文本。
 
-    支持多个语音识别引擎：
-    - Google Speech Recognition
-    - Microsoft Azure Speech Recognition
+    使用选定的语音识别引擎（通过RECOGNIZER_ENGINE环境变量配置）：
+    - google: Google Speech Recognition
+    - azure: Microsoft Azure Speech Recognition（需要配置AZURE_KEY和AZURE_LOCATION）
 
     Returns:
-        str: 转换后的用户语音指令文本
+        str: 识别出的用户语音指令文本
 
     Raises:
-        UnknownValueError: 语音无法被识别时抛出
-        RequestError: 语音识别服务出现问题时抛出
-        WaitTimeoutError: 等待超时时抛出（超时设置为20秒）
+        sr.UnknownValueError: 语音无法被识别时抛出
+        sr.RequestError: 语音识别服务出现问题时抛出
+        sr.WaitTimeoutError: 等待用户输入超过20秒时抛出
     """
     print("等待用户指令")
     with sr.Microphone() as source:
@@ -167,7 +225,7 @@ def listen_for_commands() -> str:
 
 def speak(sentence: str):
     """
-    使用文字转语音引擎朗读指定文本。
+    使用文字转语音引擎朗读文本。
 
     使用 pyttsx3 引擎将文本转换为语音输出，
     同时在控制台打印输出内容。
@@ -179,8 +237,8 @@ def speak(sentence: str):
         None
 
     Example:
-        >>> speak("你好")
-        Assistant: 你好
+        >>> speak("你好，我是语音助手")
+        Assistant: 你好，我是语音助手
     """
     print(f"Assistant: {sentence}")
     tts_engine.say(sentence)
@@ -193,9 +251,10 @@ def get_model_response(user_input: str) -> str:
 
     功能：
     1. 将用户输入添加到对话历史
-    2. 调用 GPT 模型生成回复
-    3. 支持工具调用（如搜索功能）
+    2. 调用指定的 GPT 模型生成回复
+    3. 支持工具调用（如网络搜索功能）
     4. 处理工具调用结果并生成最终回复
+    5. 维护对话上下文
 
     Parameters:
         user_input (str): 用户的输入文本
@@ -260,11 +319,12 @@ def start_assistant():
     4. 管理对话状态和异常情况
 
     特性：
-    - 自动清理对话历史
-    - 支持退出命令（"再见"、"退出"、"结束"）
+    - 每轮对话前自动清理历史记录
+    - 支持多种退出命令（"再见"、"退出"、"结束"）
     - 错误重试机制（最多3次）
-    - 超时自动进入待机模式
-    - 优雅的异常处理
+    - 超时（20秒）自动进入待机模式
+    - 完善的异常处理机制
+    - 系统提示词引导，确保AI回答简洁友好
 
     Returns:
         None
@@ -281,7 +341,7 @@ def start_assistant():
             unsuccessful_tries = 0
             conversation_history.append(
                 {
-                    "role": "developer",
+                    "role": "system",
                     "content": "你是一个友好的AI助手，请用简洁的语言回答用户的问题。",
                 }
             )
@@ -304,6 +364,9 @@ def start_assistant():
                 except sr.WaitTimeoutError:
                     speak("进入待机状态。")
                     break
+                except TimeoutError:
+                    speak("请求超时。")
+                    unsuccessful_tries += 1
 
                 if unsuccessful_tries >= 3:
                     speak("尝试次数过多，进入待机状态。")
