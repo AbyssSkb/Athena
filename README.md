@@ -13,6 +13,7 @@
 - 🔄 Conversation history management
 - ⏲️ Auto-standby mode
 - 🎵 Text-to-speech response in Chinese
+- 🌍 Asynchronous web content extraction
 
 ## 🛠️ Prerequisites
 
@@ -53,11 +54,11 @@ AZURE_KEY="YOUR_AZURE_KEY"           # Optional, for Azure speech recognition
 RECOGNIZER_ENGINE="google"           # Options: "google" or "azure"
 ```
 
-3. Configure `pyttsx3` for Linux user:
+3. Configure `pyttsx3` for Linux users:
 ```bash
 sudo apt update && sudo apt install espeak-ng libespeak1
 ```
-> **Note:** This step is only required for Linux user if voice output is not working.
+> **Note:** This step is only required for Linux users if voice output is not working.
 
 ## 🚀 Usage
 
@@ -87,7 +88,8 @@ uv run main.py
 - Integrated DuckDuckGo search
 - Region-specific results (cn-zh)
 - Safe search enabled
-- Returns up to 5 results per query
+- Asynchronous content extraction from search results
+- Returns detailed content from up to 5 sources
 
 ### Error Handling
 - Automatic retry on speech recognition failures (max 3 attempts)
