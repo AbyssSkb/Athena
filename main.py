@@ -5,6 +5,8 @@ import pvporcupine
 import pyaudio
 from dotenv import load_dotenv
 from openai import OpenAI
+from duckduckgo_search import DDGS
+import json
 import os
 
 # 加载环境变量
@@ -21,26 +23,88 @@ voices = tts_engine.getProperty("voices")
 tts_engine.setProperty("voice", voices[-1].id)
 porcupine = pvporcupine.create(keywords=["hey siri"], access_key=picovoice_access_key)
 recognizer = sr.Recognizer()
-recognizer.operation_timeout = 5
+recognizer.operation_timeout = 10
 chat_client = OpenAI(
     api_key=openai_api_key,
     base_url=openai_base_url,
 )
 conversation_history = []
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_duckduckgo",
+            "description": "使用DuckDuckGo搜索引擎查询信息。可以搜索最新新闻、文章、博客等内容。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keywords": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "搜索的关键词列表。例如：['Python', '机器学习', '最新进展']。",
+                    }
+                },
+                "required": ["keywords"],
+            },
+        },
+    }
+]
+
+
+def search_duckduckgo(keywords: list[str]):
+    """
+    使用 DuckDuckGo 搜索引擎执行查询。
+
+    Parameters:
+        keywords (list): 搜索关键词列表
+
+    Returns:
+        list: 搜索结果列表，每个结果包含标题、链接和摘要
+
+    Example:
+        >>> search_duckduckgo(['Python', '机器学习'])
+    """
+    search_term = " ".join(keywords)
+    print(f"Searching: {search_term}")
+    results = DDGS().text(
+        keywords=search_term, region="cn-zh", safesearch="on", max_results=5
+    )
+    for i, result in enumerate(results, start=1):
+        print(f"Result {i}")
+        print(result['title'])
+        print(result['href'])
+        print(result['body'])
+        print()
+    return results
+
+
+def call_function(name: str, args: dict[str, str]):
+    """
+    根据函数名和参数调用相应的工具函数。
+
+    Parameters:
+        name (str): 要调用的函数名
+        args (dict): 函数参数字典
+
+    Returns:
+        Any: 函数调用的结果
+    """
+    if name == "search_duckduckgo":
+        return search_duckduckgo(**args)
 
 
 def detect_wake_word():
     """
-    监听并检测唤醒词，当检测到指定唤醒词时函数返回。
+    监听并检测唤醒词。
 
     使用 Porcupine 热词检测引擎来识别唤醒词 "hey siri"。
-    检测到唤醒词后会播放语音确认，并关闭音频流。
+    当检测到唤醒词时，会播放语音确认并停止监听。
 
     Returns:
         None
 
     Raises:
-        PyAudioError: 当音频设备初始化失败时抛出
+        PyAudioError: 音频设备初始化失败时抛出
     """
     p = pyaudio.PyAudio()
     stream = p.open(
@@ -66,16 +130,17 @@ def listen_for_commands() -> str:
     """
     监听并转换用户的语音指令为文本。
 
-    使用 Google Speech Recognition 服务将音频转换为文本。
-    会自动调整环境噪声水平，超时时间为20秒。
+    支持多个语音识别引擎：
+    - Google Speech Recognition
+    - Microsoft Azure Speech Recognition
 
     Returns:
         str: 转换后的用户语音指令文本
 
     Raises:
-        UnknownValueError: 当语音无法被识别时抛出
-        RequestError: 当语音识别服务出现问题时抛出
-        WaitTimeoutError: 当等待超时时抛出
+        UnknownValueError: 语音无法被识别时抛出
+        RequestError: 语音识别服务出现问题时抛出
+        WaitTimeoutError: 等待超时时抛出（超时设置为20秒）
     """
     print("等待用户指令")
     with sr.Microphone() as source:
@@ -104,6 +169,9 @@ def speak(sentence: str):
     """
     使用文字转语音引擎朗读指定文本。
 
+    使用 pyttsx3 引擎将文本转换为语音输出，
+    同时在控制台打印输出内容。
+
     Parameters:
         sentence (str): 需要朗读的文本内容
 
@@ -123,8 +191,11 @@ def get_model_response(user_input: str) -> str:
     """
     调用 OpenAI API 获取对话回复。
 
-    将用户输入添加到对话历史中，通过 GPT 模型生成回复，
-    并将回复也保存到对话历史中。
+    功能：
+    1. 将用户输入添加到对话历史
+    2. 调用 GPT 模型生成回复
+    3. 支持工具调用（如搜索功能）
+    4. 处理工具调用结果并生成最终回复
 
     Parameters:
         user_input (str): 用户的输入文本
@@ -135,15 +206,43 @@ def get_model_response(user_input: str) -> str:
     Raises:
         Exception: 当 API 调用失败时返回错误信息
     """
-    conversation_history.append({"role": "user", "content": user_input})
-
     try:
-        response = chat_client.chat.completions.create(
+        conversation_history.append(
+            {
+                "role": "user",
+                "content": user_input,
+            }
+        )
+        completion = chat_client.chat.completions.create(
             model=chat_model,
             messages=conversation_history,
+            tools=tools,
         )
-        ai_response = response.choices[0].message.content.strip()
-        conversation_history.append({"role": "assistant", "content": ai_response})
+        conversation_history.append(completion.choices[0].message)
+        if completion.choices[0].message.tool_calls:
+            for tool_call in completion.choices[0].message.tool_calls:
+                name = tool_call.function.name
+                args = json.loads(tool_call.function.arguments)
+
+                result = call_function(name, args)
+                result = json.dumps(result, ensure_ascii=False)
+                conversation_history.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result,
+                    }
+                )
+
+            completion = chat_client.chat.completions.create(
+                model=chat_model,
+                messages=conversation_history,
+                tools=tools,
+            )
+            conversation_history.append(completion.choices[0].message)
+        else:
+            print("No search needed.")
+        ai_response = completion.choices[0].message.content.strip()
         return ai_response
     except Exception as e:
         print(f"Error getting model response: {e}")
@@ -154,25 +253,27 @@ def start_assistant():
     """
     启动语音助手的主循环。
 
-    实现以下功能：
-    1. 等待唤醒词激活
-    2. 开始对话循环，接收用户指令
+    主要功能：
+    1. 等待唤醒词激活系统
+    2. 进入交互式对话循环
     3. 处理用户指令并返回响应
-    4. 处理各种异常情况
+    4. 管理对话状态和异常情况
 
-    Features:
-        - 自动清理对话历史
-        - 支持退出命令词（"再见"、"退出"、"结束"）
-        - 错误重试机制（最多3次）
-        - 超时自动进入待机
+    特性：
+    - 自动清理对话历史
+    - 支持退出命令（"再见"、"退出"、"结束"）
+    - 错误重试机制（最多3次）
+    - 超时自动进入待机模式
+    - 优雅的异常处理
 
     Returns:
         None
 
     Raises:
-        KeyboardInterrupt: 当用户手动中断程序时
+        KeyboardInterrupt: 用户手动中断程序时抛出
     """
     speak("语音助手已开机")
+    print(f"Use model: {chat_model}")
     try:
         while True:
             conversation_history.clear()
