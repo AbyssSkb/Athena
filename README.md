@@ -1,12 +1,14 @@
 # 🎤 Athena
 
-> A Chinese voice assistant powered by OpenAI's GPT and Python text-to-speech technology, featuring wake word detection.
+> A Chinese voice assistant powered by OpenAI's GPT and Python text-to-speech technology, featuring wake word detection and web search capabilities.
 
 ## ✨ Features
 
 - 🔊 Wake word detection ("Hey Siri")
 - 🗣️ Chinese voice command recognition
 - 🤖 AI-powered conversations using OpenAI GPT
+- 🔍 Web search integration with DuckDuckGo
+- 🌐 Multiple speech recognition engines (Google, Azure)
 - 🎯 Automatic ambient noise adjustment
 - 🔄 Conversation history management
 - ⏲️ Auto-standby mode
@@ -18,6 +20,7 @@
 - [uv](https://github.com/astral-sh/uv) package manager 
 - OpenAI API key
 - [Picovoice Access key](https://console.picovoice.ai/)
+- Azure Speech API key (optional, if using Azure speech recognition)
 - Working microphone and speakers
 
 ## 📦 Installation
@@ -41,10 +44,14 @@ cp .env.example .env
 ```
 
 2. Update `.env` with your credentials:
-- `OPENAI_API_KEY`: Your OpenAI API key
-- `OPENAI_BASE_URL`: OpenAI API base URL
-- `OPENAI_MODEL`: GPT model to use
-- `PICOVOICE_ACCESS_KEY`: Your Picovoice access key
+```
+OPENAI_API_KEY="YOUR_OPENAI_API_KEY"
+OPENAI_BASE_URL="https://api.openai.com/v1"
+OPENAI_MODEL="gpt-4o-mini"
+PICOVOICE_ACCESS_KEY="YOUR_PICOVOICE_ACCESS_KEY"
+AZURE_KEY="YOUR_AZURE_KEY"           # Optional, for Azure speech recognition
+RECOGNIZER_ENGINE="google"           # Options: "google" or "azure"
+```
 
 3. Configure `pyttsx3` for Linux user:
 ```bash
@@ -60,7 +67,7 @@ uv run main.py
 ```
 
 2. Say "Hey Siri" to activate the assistant
-3. Speak your command or question
+3. Speak your command or question in Chinese
 4. Say "再见", "退出" or "结束" to end the conversation
 
 ## ⚡ Quick Commands
@@ -68,11 +75,25 @@ uv run main.py
 - Wake Word: "Hey Siri"
 - Exit Commands: "再见", "退出", "结束"
 
-## 🛡️ Error Handling
+## 🎯 Features Details
 
+### Speech Recognition
+- Default engine: Google Speech Recognition
+- Alternative: Azure Speech Recognition (requires Azure key)
+- Automatic ambient noise adjustment
+- 20-second timeout for commands
+
+### Web Search
+- Integrated DuckDuckGo search
+- Region-specific results (cn-zh)
+- Safe search enabled
+- Returns up to 5 results per query
+
+### Error Handling
 - Automatic retry on speech recognition failures (max 3 attempts)
-- Ambient noise adjustment
-- Timeout handling with auto-standby mode
+- Graceful timeout handling
+- Clear error messages
+- Auto-standby mode
 
 ## 📝 License
 
