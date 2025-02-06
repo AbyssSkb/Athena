@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from duckduckgo_search import DDGS
 from bs4 import BeautifulSoup
+from datetime import datetime
 import asyncio
 import httpx
 import json
@@ -38,6 +39,7 @@ tools = [
         "function": {
             "name": "search_duckduckgo",
             "description": "使用DuckDuckGo搜索引擎查询信息。可以搜索最新新闻、文章、博客等内容。",
+            "strict": True,
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -48,13 +50,27 @@ tools = [
                     }
                 },
                 "required": ["keywords"],
+                "additionalProperties": False,
             },
         },
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_datetime",
+            "description": "获取当前的日期和时间",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "addtionalProperties": False,
+            },
+        },
+    },
 ]
 
 
-async def fetch_url(url: str):
+async def fetch_url(url: str) -> str:
     """异步获取指定URL的网页内容并提取文本。
 
     使用httpx进行异步HTTP请求，并使用BeautifulSoup提取网页文本内容。
@@ -86,7 +102,7 @@ async def fetch_url(url: str):
             print(f"An error occurred while requesting {exc.request.url!r}.")
 
 
-async def crawl_web(urls: list[str]):
+async def crawl_web(urls: list[str]) -> list[str]:
     """并发爬取多个URL的内容。
 
     使用asyncio.gather实现并发请求，提高爬取效率。
@@ -101,7 +117,7 @@ async def crawl_web(urls: list[str]):
     return results
 
 
-def search_duckduckgo(keywords: list[str]):
+def search_duckduckgo(keywords: list[str]) -> list[str]:
     """使用 DuckDuckGo 搜索引擎执行查询并获取详细内容。
 
     执行搜索并对结果页面进行爬取，获取完整的页面内容。
@@ -133,23 +149,51 @@ def search_duckduckgo(keywords: list[str]):
     return response_results
 
 
-def call_function(name: str, args: dict[str, str]):
+def get_current_datetime() -> str:
+    """获取当前的日期和时间。
+
+    用于向AI助手提供时间感知能力，返回格式化的日期时间字符串。
+
+    Returns:
+        str: 当前日期和时间的字符串表示
+              格式示例: "2024-02-20 15:30:45.123456"
+
+    Example:
+        >>> get_current_datetime()
+        '2024-02-20 15:30:45.123456'
+    """
+    print("获取当前的日期和时间")
+    now = datetime.now()
+    return str(now)
+
+
+def call_function(name: str, args: dict):
     """根据函数名和参数动态调用工具函数。
 
-    用于支持AI助手的工具调用功能，目前支持搜索功能。
+    支持的工具函数:
+    - search_duckduckgo: 搜索信息
+    - get_current_datetime: 获取当前时间
 
     Args:
         name (str): 要调用的函数名
-        args (dict): 函数参数字典
+        args (dict): 函数参数字典，必须与目标函数参数匹配
 
     Returns:
-        Any: 函数调用的结果
+        Any: 函数调用的结果，类型取决于被调用的具体函数
 
     Raises:
         ValueError: 当指定的函数名不存在时抛出
+        TypeError: 当参数与函数定义不匹配时抛出
+
+    Example:
+        >>> result = call_function('get_current_datetime', {})
+        >>> print(result)  # 输出当前时间
     """
-    if name == "search_duckduckgo":
-        return search_duckduckgo(**args)
+    match name:
+        case "search_duckduckgo":
+            return search_duckduckgo(**args)
+        case "get_current_datetime":
+            return get_current_datetime(**args)
 
 
 def detect_wake_word():
@@ -293,7 +337,7 @@ def get_model_response(user_input: str) -> str:
             }
         )
         completion = single_chat_completion()
-        if completion.choices[0].message.tool_calls:
+        while completion.choices[0].message.tool_calls:
             for tool_call in completion.choices[0].message.tool_calls:
                 name = tool_call.function.name
                 args = json.loads(tool_call.function.arguments)
