@@ -55,17 +55,19 @@ tools = [
 
 
 async def fetch_url(url: str):
-    """
-    异步获取指定URL的网页内容并提取文本。
+    """异步获取指定URL的网页内容并提取文本。
 
-    Parameters:
+    使用httpx进行异步HTTP请求，并使用BeautifulSoup提取网页文本内容。
+    会自动清理和格式化提取的文本。
+
+    Args:
         url (str): 要获取内容的网页URL
 
     Returns:
         str: 提取的网页文本内容，经过清理和格式化
 
     Raises:
-        httpx.RequestError: 当请求失败时抛出
+        httpx.RequestError: 当HTTP请求失败时抛出
     """
     async with httpx.AsyncClient() as client:
         try:
@@ -85,28 +87,30 @@ async def fetch_url(url: str):
 
 
 async def crawl_web(urls: list[str]):
-    """
-    并发爬取多个URL的内容。
+    """并发爬取多个URL的内容。
 
-    Parameters:
+    使用asyncio.gather实现并发请求，提高爬取效率。
+
+    Args:
         urls (list[str]): 要爬取的URL列表
 
     Returns:
-        list: 所有URL的爬取结果列表
+        list[str]: 所有URL的爬取结果列表，每个元素为对应URL的文本内容
     """
     results = await asyncio.gather(*(fetch_url(url) for url in urls))
     return results
 
 
 def search_duckduckgo(keywords: list[str]):
-    """
-    使用 DuckDuckGo 搜索引擎执行查询并获取详细内容。
+    """使用 DuckDuckGo 搜索引擎执行查询并获取详细内容。
 
-    Parameters:
+    执行搜索并对结果页面进行爬取，获取完整的页面内容。
+
+    Args:
         keywords (list[str]): 搜索关键词列表
 
     Returns:
-        list: 搜索结果页面的完整文本内容列表
+        list[str]: 搜索结果页面的完整文本内容列表
 
     Example:
         >>> search_duckduckgo(['Python', '机器学习'])
@@ -122,11 +126,7 @@ def search_duckduckgo(keywords: list[str]):
         backend="html",
     )
     for i, result in enumerate(results, start=1):
-        print(f"Result {i}")
-        print(result["title"])
-        print(result["href"])
-        print(result["body"])
-        print()
+        print(f"Index {i}: {result['href']} {result['title']}")
 
     urls = [result["href"] for result in results]
     response_results = asyncio.run(crawl_web(urls))
@@ -134,10 +134,11 @@ def search_duckduckgo(keywords: list[str]):
 
 
 def call_function(name: str, args: dict[str, str]):
-    """
-    根据函数名和参数动态调用工具函数。
+    """根据函数名和参数动态调用工具函数。
 
-    Parameters:
+    用于支持AI助手的工具调用功能，目前支持搜索功能。
+
+    Args:
         name (str): 要调用的函数名
         args (dict): 函数参数字典
 
@@ -152,8 +153,7 @@ def call_function(name: str, args: dict[str, str]):
 
 
 def detect_wake_word():
-    """
-    监听并检测唤醒词。
+    """监听并检测唤醒词。
 
     使用 Porcupine 热词检测引擎来识别唤醒词 "hey siri"。
     当检测到唤醒词时，会播放语音确认并停止监听。
@@ -164,8 +164,8 @@ def detect_wake_word():
     Raises:
         PyAudioError: 音频设备初始化失败时抛出
     """
-    p = pyaudio.PyAudio()
-    stream = p.open(
+    pyaudio_engine = pyaudio.PyAudio()
+    stream = pyaudio_engine.open(
         rate=porcupine.sample_rate,
         channels=1,
         format=pyaudio.paInt16,
@@ -181,12 +181,11 @@ def detect_wake_word():
             break
     stream.stop_stream()
     stream.close()
-    p.terminate()
+    pyaudio_engine.terminate()
 
 
 def listen_for_commands() -> str:
-    """
-    监听并转换用户的语音指令为文本。
+    """监听并转换用户的语音指令为文本。
 
     使用选定的语音识别引擎（通过RECOGNIZER_ENGINE环境变量配置）：
     - google: Google Speech Recognition
@@ -223,15 +222,14 @@ def listen_for_commands() -> str:
     return command
 
 
-def speak(sentence: str):
-    """
-    使用文字转语音引擎朗读文本。
+def speak(text: str):
+    """使用文字转语音引擎朗读文本。
 
     使用 pyttsx3 引擎将文本转换为语音输出，
     同时在控制台打印输出内容。
 
-    Parameters:
-        sentence (str): 需要朗读的文本内容
+    Args:
+        text (str): 需要朗读的文本内容
 
     Returns:
         None
@@ -240,14 +238,36 @@ def speak(sentence: str):
         >>> speak("你好，我是语音助手")
         Assistant: 你好，我是语音助手
     """
-    print(f"Assistant: {sentence}")
-    tts_engine.say(sentence)
+    print(f"Assistant: {text}")
+    tts_engine.say(text)
     tts_engine.runAndWait()
 
 
-def get_model_response(user_input: str) -> str:
+def single_chat_completion():
+    """执行单次与OpenAI API的对话请求。
+
+    使用当前的对话历史创建一个新的对话补全请求。
+
+    Returns:
+        ChatCompletion: OpenAI API的响应对象
+
+    Raises:
+        TimeoutError: 请求超时时抛出（5秒）
     """
-    调用 OpenAI API 获取对话回复。
+    print("正在询问AI")
+    completion = chat_client.chat.completions.create(
+        model=chat_model,
+        messages=conversation_history,
+        tools=tools,
+        timeout=5,
+    )
+    conversation_history.append(completion.choices[0].message)
+    print("询问完毕")
+    return completion
+
+
+def get_model_response(user_input: str) -> str:
+    """调用 OpenAI API 获取对话回复。
 
     功能：
     1. 将用户输入添加到对话历史
@@ -256,7 +276,7 @@ def get_model_response(user_input: str) -> str:
     4. 处理工具调用结果并生成最终回复
     5. 维护对话上下文
 
-    Parameters:
+    Args:
         user_input (str): 用户的输入文本
 
     Returns:
@@ -272,12 +292,7 @@ def get_model_response(user_input: str) -> str:
                 "content": user_input,
             }
         )
-        completion = chat_client.chat.completions.create(
-            model=chat_model,
-            messages=conversation_history,
-            tools=tools,
-        )
-        conversation_history.append(completion.choices[0].message)
+        completion = single_chat_completion()
         if completion.choices[0].message.tool_calls:
             for tool_call in completion.choices[0].message.tool_calls:
                 name = tool_call.function.name
@@ -292,25 +307,17 @@ def get_model_response(user_input: str) -> str:
                         "content": result,
                     }
                 )
+            completion = single_chat_completion()
 
-            completion = chat_client.chat.completions.create(
-                model=chat_model,
-                messages=conversation_history,
-                tools=tools,
-            )
-            conversation_history.append(completion.choices[0].message)
-        else:
-            print("No search needed.")
-        ai_response = completion.choices[0].message.content.strip()
-        return ai_response
+        model_response = completion.choices[0].message.content.strip()
+        return model_response
     except Exception as e:
-        print(f"Error getting model response: {e}")
+        print(f"{type(e).__name__}: {e}")
         return "抱歉，我现在无法回答这个问题。"
 
 
 def start_assistant():
-    """
-    启动语音助手的主循环。
+    """启动语音助手的主循环。
 
     主要功能：
     1. 等待唤醒词激活系统
@@ -337,12 +344,13 @@ def start_assistant():
     try:
         while True:
             conversation_history.clear()
+            print("进入待机状态，等待唤醒")
             detect_wake_word()
             unsuccessful_tries = 0
             conversation_history.append(
                 {
                     "role": "system",
-                    "content": "你是一个友好的AI助手，请用简洁的语言回答用户的问题。",
+                    "content": "你是一个友好的AI语音助手，和用户进行日常对话聊天，请用简洁的语言回答用户的问题。",
                 }
             )
 
