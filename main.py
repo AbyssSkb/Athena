@@ -26,7 +26,8 @@ speaker_engine = os.getenv("SPEAKER_ENGINE", "pyttsx3")
 gsv_base_url = os.getenv("GSV_BASE_URL")
 ref_audio_path = os.getenv("REF_AUDIO_PATH")
 prompt_text = os.getenv("PROMPT_TEXT")
-prompt_lang = os.getenv("PROMPT_LANG")
+prompt_lang = os.getenv("PROMPT_LANG", "auto")
+text_lang = os.getenv("TEXT_LANG", "auto")
 
 # 初始化
 tts_engine = pyttsx3.init()
@@ -297,7 +298,7 @@ def speak(text: str):
             tts_engine.say(text)
             tts_engine.runAndWait()
         case "gsv":
-            audio_url = f"{gsv_base_url}?text={text}&text_lang=zh&ref_audio_path={ref_audio_path}&prompt_text={prompt_text}&prompt_lang={prompt_lang}&streaming_mode=true&text_split_method=cut1"
+            audio_url = f"{gsv_base_url}?text={text}&text_lang={text_lang}&ref_audio_path={ref_audio_path}&prompt_text={prompt_text}&prompt_lang={prompt_lang}&streaming_mode=true&text_split_method=cut1"
             player = vlc.MediaPlayer(audio_url)
             player.play()
             time.sleep(1)
