@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import asyncio
 import httpx
+import urllib.parse
 import json
 import time
 import vlc
@@ -30,6 +31,8 @@ prompt_lang = os.getenv("PROMPT_LANG", "auto")
 text_lang = os.getenv("TEXT_LANG", "auto")
 
 # 初始化
+prompt_text = urllib.parse.quote(prompt_text)
+ref_audio_path = urllib.parse.quote(ref_audio_path)
 tts_engine = pyttsx3.init()
 voices = tts_engine.getProperty("voices")
 tts_engine.setProperty("voice", voices[-1].id)
@@ -122,6 +125,8 @@ async def crawl_web(urls: list[str]) -> list[str]:
         list[str]: 所有URL的爬取结果列表，每个元素为对应URL的文本内容
     """
     results = await asyncio.gather(*(fetch_url(url) for url in urls))
+    length = len("".join(results))
+    print(f"Context Length: {length}")
     return results
 
 
@@ -216,24 +221,26 @@ def detect_wake_word():
     Raises:
         PyAudioError: 音频设备初始化失败时抛出
     """
-    pyaudio_engine = pyaudio.PyAudio()
-    stream = pyaudio_engine.open(
-        rate=porcupine.sample_rate,
-        channels=1,
-        format=pyaudio.paInt16,
-        input=True,
-        frames_per_buffer=porcupine.frame_length,
-    )
-    while True:
-        pcm = stream.read(porcupine.frame_length)
-        pcm = np.frombuffer(pcm, dtype=np.int16)
-        result = porcupine.process(pcm)
-        if result >= 0:
-            speak("我在")
-            break
-    stream.stop_stream()
-    stream.close()
-    pyaudio_engine.terminate()
+    try:
+        pyaudio_engine = pyaudio.PyAudio()
+        stream = pyaudio_engine.open(
+            rate=porcupine.sample_rate,
+            channels=1,
+            format=pyaudio.paInt16,
+            input=True,
+            frames_per_buffer=porcupine.frame_length,
+        )
+        while True:
+            pcm = stream.read(porcupine.frame_length)
+            pcm = np.frombuffer(pcm, dtype=np.int16)
+            result = porcupine.process(pcm)
+            if result >= 0:
+                speak("我在")
+                break
+    finally:
+        stream.stop_stream()
+        stream.close()
+        pyaudio_engine.terminate()
 
 
 def listen_for_commands() -> str:
@@ -253,7 +260,6 @@ def listen_for_commands() -> str:
     """
     print("等待用户指令")
     with sr.Microphone() as source:
-        recognizer.adjust_for_ambient_noise(source)
         audio = recognizer.listen(source, timeout=20)
     print("收到指令")
 
@@ -298,7 +304,8 @@ def speak(text: str):
             tts_engine.say(text)
             tts_engine.runAndWait()
         case "gsv":
-            audio_url = f"{gsv_base_url}?text={text}&text_lang={text_lang}&ref_audio_path={ref_audio_path}&prompt_text={prompt_text}&prompt_lang={prompt_lang}&streaming_mode=true&text_split_method=cut1"
+            text = urllib.parse.quote(text)
+            audio_url = f"{gsv_base_url}?text={text}&text_lang={text_lang}&ref_audio_path={ref_audio_path}&prompt_text={prompt_text}&prompt_lang={prompt_lang}&streaming_mode=true&text_split_method=cut0"
             player = vlc.MediaPlayer(audio_url)
             player.play()
             time.sleep(1)
@@ -419,6 +426,7 @@ def start_assistant():
                     "role": "system",
                     "content": f"""
                     你是一个友好的AI语音助手，和用户进行日常对话聊天，请用简洁的语言回答用户的问题。
+                    你的回答应该会以语音呈现而非文本，所以你不应该使用换行符或者其他特殊字符。
                     请转化为可以直接读出来的汉字，例如‘气温约-4°C，风速为3-4级，相对湿度约13%’应该转成‘气温约零下四摄氏度，风速为三到四级，相对湿度约百分之十三’。
                     当前的日期和时间为{get_current_datetime()}
                     """,
@@ -436,6 +444,8 @@ def start_assistant():
                     speak(response)
                 except sr.UnknownValueError:
                     speak("抱歉，我没有听清楚，请再说一遍。")
+                    time.sleep(3)
+                    recognizer.energy_threshold += 50
                     unsuccessful_tries += 1
                 except sr.RequestError as e:
                     speak(f"语音识别服务错误: {e}")
