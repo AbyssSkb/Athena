@@ -65,7 +65,8 @@ SPEAKER_ENGINE="pyttsx3"               # Options: "pyttsx3" or "gsv"
 GSV_BASE_URL="YOUR_GSV_BASE_URL"       # Required if using GPT-SoVITS
 REF_AUDIO_PATH="YOUR_REF_AUDIO_PATH"   # Required if using GPT-SoVITS
 PROMPT_TEXT="YOUR_PROMPT_TEXT"         # Required if using GPT-SoVITS
-PROMPT_LANG="YOUR_PROMPT_LANG"         # Required if using GPT-SoVITS
+PROMPT_LANG="auto"                     # Required if using GPT-SoVITS
+TEXT_LANG="auto"                       # Required if using GPT-SoVITS
 ```
 
 3. Configure `pyttsx3` for Linux users:
