@@ -23,7 +23,7 @@ chat_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 picovoice_access_key = os.getenv("PICOVOICE_ACCESS_KEY")
 recognizer_engine = os.getenv("RECOGNIZER_ENGINE", "google")
 speaker_engine = os.getenv("SPEAKER_ENGINE", "pyttsx3")
-sovits_base_url = os.getenv("SOVITS_BASE_URL")
+gsv_base_url = os.getenv("GSV_BASE_URL")
 ref_audio_path = os.getenv("REF_AUDIO_PATH")
 prompt_text = os.getenv("PROMPT_TEXT")
 prompt_lang = os.getenv("PROMPT_LANG")
@@ -276,10 +276,10 @@ def listen_for_commands() -> str:
 def speak(text: str):
     """使用文字转语音引擎朗读文本。
 
-    使用 pyttsx3 引擎或 sovits 引擎将文本转换为语音输出，
+    使用 pyttsx3 引擎或 GPT-SoVITS 引擎将文本转换为语音输出，
     同时在控制台打印输出内容。支持的引擎通过SPEAKER_ENGINE环境变量配置：
     - pyttsx3: 使用本地TTS引擎
-    - sovits: 使用远程Sovits服务（需要配置SOVITS_BASE_URL等参数）
+    - gsv: 使用远程GPT-SoVITS服务（需要配置GSV_BASE_URL等参数）
 
     Args:
         text (str): 需要朗读的文本内容
@@ -296,8 +296,8 @@ def speak(text: str):
         case "pyttsx3":
             tts_engine.say(text)
             tts_engine.runAndWait()
-        case "sovits":
-            audio_url = f"{sovits_base_url}?text={text}&text_lang=zh&ref_audio_path={ref_audio_path}&prompt_text={prompt_text}&prompt_lang={prompt_lang}&streaming_mode=true&text_split_method=cut1"
+        case "gsv":
+            audio_url = f"{gsv_base_url}?text={text}&text_lang=zh&ref_audio_path={ref_audio_path}&prompt_text={prompt_text}&prompt_lang={prompt_lang}&streaming_mode=true&text_split_method=cut1"
             player = vlc.MediaPlayer(audio_url)
             player.play()
             time.sleep(1)

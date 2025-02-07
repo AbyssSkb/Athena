@@ -9,7 +9,7 @@
 - 🤖 AI-powered conversations using OpenAI GPT
 - 🔍 Web search integration with DuckDuckGo
 - 🌐 Multiple speech recognition engines (Google, Azure)
-- 🔊 Multiple TTS engines (pyttsx3, Sovits)
+- 🔊 Multiple TTS engines (pyttsx3, GPT-SoVITS)
 - 🎯 Automatic ambient noise adjustment
 - 🔄 Conversation history management
 - ⏲️ Auto-standby mode
@@ -24,7 +24,7 @@
 - OpenAI API key
 - [Picovoice Access key](https://console.picovoice.ai/)
 - Azure Speech API key (optional, if using Azure speech recognition)
-- Sovits server (optional, if using Sovits TTS)
+- GPT-SoVITS server (optional, if using GPT-SoVITS TTS)
 - VLC media player
 - Working microphone and speakers
 
@@ -59,13 +59,13 @@ OPENAI_API_KEY="YOUR_OPENAI_API_KEY"
 OPENAI_BASE_URL="https://api.openai.com/v1"
 OPENAI_MODEL="gpt-4o-mini"
 PICOVOICE_ACCESS_KEY="YOUR_PICOVOICE_ACCESS_KEY"
-AZURE_KEY="YOUR_AZURE_KEY"           # Optional, for Azure speech recognition
-RECOGNIZER_ENGINE="google"           # Options: "google" or "azure"
-SPEAKER_ENGINE="pyttsx3"            # Options: "pyttsx3" or "sovits"
-SOVITS_BASE_URL="YOUR_SOVITS_BASE_URL" # Required if using Sovits
-REF_AUDIO_PATH="YOUR_REF_AUDIO_PATH"   # Required if using Sovits
-PROMPT_TEXT="YOUR_PROMPT_TEXT"         # Required if using Sovits
-PROMPT_LANG="YOUR_PROMPT_LANG"         # Required if using Sovits
+AZURE_KEY="YOUR_AZURE_KEY"             # Optional, for Azure speech recognition
+RECOGNIZER_ENGINE="google"             # Options: "google" or "azure"
+SPEAKER_ENGINE="pyttsx3"               # Options: "pyttsx3" or "gsv"
+GSV_BASE_URL="YOUR_GSV_BASE_URL"       # Required if using GPT-SoVITS
+REF_AUDIO_PATH="YOUR_REF_AUDIO_PATH"   # Required if using GPT-SoVITS
+PROMPT_TEXT="YOUR_PROMPT_TEXT"         # Required if using GPT-SoVITS
+PROMPT_LANG="YOUR_PROMPT_LANG"         # Required if using GPT-SoVITS
 ```
 
 3. Configure `pyttsx3` for Linux users:
@@ -100,7 +100,7 @@ uv run main.py
 
 ### Text-to-Speech
 - Default engine: pyttsx3 (offline)
-- Alternative: Sovits (requires server setup)
+- Alternative: GPT-SoVITS (requires server setup)
 - Automatic number and symbol conversion for natural speech
 
 ### Web Search
