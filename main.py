@@ -32,13 +32,15 @@ text_lang = os.getenv("TEXT_LANG", "auto")
 
 # 初始化
 prompt_text = urllib.parse.quote(prompt_text)
-ref_audio_path = urllib.parse.quote(ref_audio_path)
+ref_audio_path = urllib.parse.quote(ref_audio_path, safe="")
 tts_engine = pyttsx3.init()
 voices = tts_engine.getProperty("voices")
 tts_engine.setProperty("voice", voices[-1].id)
 porcupine = pvporcupine.create(keywords=["hey siri"], access_key=picovoice_access_key)
 recognizer = sr.Recognizer()
-recognizer.operation_timeout = 10
+recognizer.operation_timeout = 5
+recognizer.dynamic_energy_threshold = False
+recognizer.pause_threshold = 1.5
 chat_client = OpenAI(
     api_key=openai_api_key,
     base_url=openai_base_url,
@@ -104,10 +106,12 @@ async def fetch_url(url: str) -> str:
             response = await client.get(url, headers=headers)
             html = response.text
             soup = BeautifulSoup(html, "html.parser")
+            for a in soup.find_all("a"):
+                a.unwrap()
+            for img in soup.find_all("img"):
+                img.decompose()
             text = soup.get_text()
-            text = "\n".join(
-                [line.strip() for line in text.splitlines() if line.strip()]
-            )
+            text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
             return text
         except httpx.RequestError as exc:
             print(f"An error occurred while requesting {exc.request.url!r}.")
@@ -151,7 +155,7 @@ def search_duckduckgo(keywords: list[str]) -> list[str]:
         keywords=search_term,
         region="cn-zh",
         safesearch="on",
-        max_results=5,
+        max_results=3,
         backend="html",
     )
     for i, result in enumerate(results, start=1):
@@ -442,21 +446,17 @@ def start_assistant():
 
                     response = get_model_response(user_input)
                     speak(response)
+                    unsuccessful_tries = 0
                 except sr.UnknownValueError:
                     speak("抱歉，我没有听清楚，请再说一遍。")
-                    time.sleep(3)
-                    recognizer.energy_threshold += 50
-                    unsuccessful_tries += 1
-                except sr.RequestError as e:
-                    speak(f"语音识别服务错误: {e}")
                     unsuccessful_tries += 1
                 except sr.WaitTimeoutError:
                     speak("进入待机状态。")
                     break
-                except TimeoutError:
-                    speak("请求超时。")
+                except Exception as e:
+                    print(f"{type(e).__name__}: {e}")
                     unsuccessful_tries += 1
-
+                    speak("发生错误")
                 if unsuccessful_tries >= 3:
                     speak("尝试次数过多，进入待机状态。")
                     break
