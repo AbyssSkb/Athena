@@ -86,17 +86,18 @@ tools = [
 async def fetch_url(url: str) -> str:
     """异步获取指定URL的网页内容并提取文本。
 
-    使用httpx进行异步HTTP请求，并使用BeautifulSoup提取网页文本内容。
-    会自动清理和格式化提取的文本。
-
     Args:
         url (str): 要获取内容的网页URL
 
     Returns:
-        str: 提取的网页文本内容，经过清理和格式化
+        str: 提取的网页文本内容，经过清理和格式化（移除链接标签、图片标签，保留纯文本）
 
-    Raises:
-        httpx.RequestError: 当HTTP请求失败时抛出
+    Example:
+        >>> async def main():
+        ...     text = await fetch_url('https://example.com')
+        ...     print(text)
+        >>> asyncio.run(main())
+        'Example Domain...'
     """
     async with httpx.AsyncClient() as client:
         try:
@@ -104,6 +105,7 @@ async def fetch_url(url: str) -> str:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 Edg/132.0.0.0"
             }
             response = await client.get(url, headers=headers)
+            response.raise_for_status()
             html = response.text
             soup = BeautifulSoup(html, "html.parser")
             for a in soup.find_all("a"):
@@ -115,12 +117,16 @@ async def fetch_url(url: str) -> str:
             return text
         except httpx.RequestError as exc:
             print(f"An error occurred while requesting {exc.request.url!r}.")
+            return ""
+        except httpx.HTTPStatusError as exc:
+            print(
+                f"Error response {exc.response.status_code} while requesting {exc.request.url!r}."
+            )
+            return ""
 
 
 async def crawl_web(urls: list[str]) -> list[str]:
     """并发爬取多个URL的内容。
-
-    使用asyncio.gather实现并发请求，提高爬取效率。
 
     Args:
         urls (list[str]): 要爬取的URL列表
@@ -137,17 +143,16 @@ async def crawl_web(urls: list[str]) -> list[str]:
 def search_duckduckgo(keywords: list[str]) -> list[str]:
     """使用 DuckDuckGo 搜索引擎执行查询并获取详细内容。
 
-    执行搜索并对结果页面进行爬取，获取完整的页面内容。
-
     Args:
-        keywords (list[str]): 搜索关键词列表
+        keywords (list[str]): 搜索关键词列表，每个元素为一个关键词
 
     Returns:
-        list[str]: 搜索结果页面的完整文本内容列表
+        list[str]: 搜索结果页面的完整文本内容列表。每个元素对应一个搜索结果页面的文本
 
     Example:
-        >>> search_duckduckgo(['Python', '机器学习'])
-        ['页面1的文本内容', '页面2的文本内容', ...]
+        >>> results = search_duckduckgo(['Python', '机器学习'])
+        >>> print(f"找到{len(results)}个结果")
+        找到3个结果
     """
     search_term = " ".join(keywords)
     print(f"Searching: {search_term}")
@@ -169,8 +174,6 @@ def search_duckduckgo(keywords: list[str]) -> list[str]:
 def get_current_datetime() -> str:
     """获取当前的日期和时间。
 
-    用于向AI助手提供时间感知能力，返回格式化的日期时间字符串。
-
     Returns:
         str: 当前日期和时间的字符串表示
               格式示例: "2024-02-20 15:30:45.123456"
@@ -187,43 +190,41 @@ def get_current_datetime() -> str:
 def call_function(name: str, args: dict):
     """根据函数名和参数动态调用工具函数。
 
-    支持的工具函数:
-    - search_duckduckgo: 搜索信息
-    - get_current_datetime: 获取当前时间
-
     Args:
-        name (str): 要调用的函数名
+        name (str): 要调用的函数名，必须是已注册的工具函数之一
         args (dict): 函数参数字典，必须与目标函数参数匹配
 
     Returns:
         Any: 函数调用的结果，类型取决于被调用的具体函数
+            - search_duckduckgo: 返回 list[str]
+            - get_current_datetime: 返回 str
 
     Raises:
-        ValueError: 当指定的函数名不存在时抛出
-        TypeError: 当参数与函数定义不匹配时抛出
+        ValueError: 当函数名未找到时抛出
 
     Example:
-        >>> result = call_function('get_current_datetime', {})
-        >>> print(result)  # 输出当前时间
+        >>> time_str = call_function('get_current_datetime', {})
+        >>> print(time_str)  # 2024-02-20 15:30:45.123456
+        >>> results = call_function('search_duckduckgo', {'keywords': ['Python']})
+        >>> print(len(results))  # 3
     """
     match name:
         case "search_duckduckgo":
             return search_duckduckgo(**args)
         case "get_current_datetime":
             return get_current_datetime(**args)
+        case other:
+            raise ValueError(f"Unknown function name: {other}")
 
 
-def detect_wake_word():
+def detect_wake_word() -> None:
     """监听并检测唤醒词。
 
-    使用 Porcupine 热词检测引擎来识别唤醒词 "hey siri"。
-    当检测到唤醒词时，会播放语音确认并停止监听。
+    使用 Picovoice Porcupine 引擎监听特定的唤醒词（"hey siri"）。
+    当检测到唤醒词时，会播放语音反馈并退出监听循环。
 
-    Returns:
-        None
-
-    Raises:
-        PyAudioError: 音频设备初始化失败时抛出
+    Note:
+        需要预先配置 PICOVOICE_ACCESS_KEY 环境变量
     """
     try:
         pyaudio_engine = pyaudio.PyAudio()
@@ -251,16 +252,25 @@ def listen_for_commands() -> str:
     """监听并转换用户的语音指令为文本。
 
     使用选定的语音识别引擎（通过RECOGNIZER_ENGINE环境变量配置）：
-    - google: Google Speech Recognition
-    - azure: Microsoft Azure Speech Recognition（需要配置AZURE_KEY和AZURE_LOCATION）
+    - google: Google Speech Recognition，无需配置额外凭据
+    - azure: Microsoft Azure Speech Recognition，需要配置以下环境变量：
+        - AZURE_KEY: Azure Speech Service 的访问密钥
+        - AZURE_LOCATION: 服务区域（默认为 "eastus"）
 
     Returns:
         str: 识别出的用户语音指令文本
 
     Raises:
-        sr.UnknownValueError: 语音无法被识别时抛出
-        sr.RequestError: 语音识别服务出现问题时抛出
-        sr.WaitTimeoutError: 等待用户输入超过20秒时抛出
+        sr.UnknownValueError: 当语音无法被识别时抛出
+        sr.RequestError: 当语音识别服务出现问题时抛出
+        sr.WaitTimeoutError: 当等待用户输入超过20秒时抛出
+
+    Example:
+        >>> try:
+        ...     command = listen_for_commands()
+        ...     print(f"识别到的命令: {command}")
+        ... except sr.UnknownValueError:
+        ...     print("无法识别语音")
     """
     print("等待用户指令")
     with sr.Microphone() as source:
@@ -287,20 +297,26 @@ def listen_for_commands() -> str:
 def speak(text: str):
     """使用文字转语音引擎朗读文本。
 
-    使用 pyttsx3 引擎或 GPT-SoVITS 引擎将文本转换为语音输出，
-    同时在控制台打印输出内容。支持的引擎通过SPEAKER_ENGINE环境变量配置：
-    - pyttsx3: 使用本地TTS引擎
-    - gsv: 使用远程GPT-SoVITS服务（需要配置GSV_BASE_URL等参数）
+    支持两种语音合成引擎（通过SPEAKER_ENGINE环境变量配置）：
+    - pyttsx3: 使用本地TTS引擎，无需网络连接
+    - gsv: 使用远程GPT-SoVITS服务，需要配置以下环境变量：
+        - GSV_BASE_URL: GPT-SoVITS服务的基础URL
+        - REF_AUDIO_PATH: 参考音频路径
+        - PROMPT_TEXT: 提示文本
+        - PROMPT_LANG: 提示语言（默认为"auto"）
+        - TEXT_LANG: 文本语言（默认为"auto"）
 
     Args:
         text (str): 需要朗读的文本内容
 
-    Returns:
-        None
+    Raises:
+        RuntimeError: 当语音合成失败时抛出
+        ConnectionError: 当使用gsv引擎且网络连接失败时抛出
 
     Example:
-        >>> speak("你好，我是语音助手")
-        Assistant: 你好，我是语音助手
+        >>> speak("现在是下午三点钟")
+        Assistant: 现在是下午三点钟
+        # 语音输出："现在是下午三点钟"
     """
     print(f"Assistant: {text}")
     match speaker_engine:
@@ -324,13 +340,19 @@ def speak(text: str):
 def single_chat_completion():
     """执行单次与OpenAI API的对话请求。
 
-    使用当前的对话历史创建一个新的对话补全请求。
+    使用当前的对话历史和工具配置，向OpenAI API发送请求并获取回复。
 
     Returns:
-        ChatCompletion: OpenAI API的响应对象
+        ChatCompletion: OpenAI API的响应对象，包含模型的回复和可能的工具调用
 
     Raises:
-        TimeoutError: 请求超时时抛出（5秒）
+        TimeoutError: 当请求超时（5秒）时抛出
+
+    Note:
+        需要预先配置以下环境变量：
+        - OPENAI_API_KEY: OpenAI API密钥
+        - OPENAI_BASE_URL: OpenAI Base URL（默认为"https://api.openai.com/v1"）
+        - OPENAI_MODEL: 使用的模型名称（默认为"gpt-4-mini"）
     """
     print("正在询问AI")
     completion = chat_client.chat.completions.create(
@@ -347,75 +369,64 @@ def single_chat_completion():
 def get_model_response(user_input: str) -> str:
     """调用 OpenAI API 获取对话回复。
 
-    功能：
-    1. 将用户输入添加到对话历史
-    2. 调用指定的 GPT 模型生成回复
-    3. 支持工具调用（如网络搜索功能）
-    4. 处理工具调用结果并生成最终回复
-    5. 维护对话上下文
+    处理用户输入，管理对话历史，处理可能的工具调用，并返回最终的AI回复。
 
     Args:
         user_input (str): 用户的输入文本
 
     Returns:
-        str: AI 模型生成的回复文本
+        str: AI模型生成的回复文本
 
-    Raises:
-        Exception: 当 API 调用失败时返回错误信息
+    Example:
+        >>> response = get_model_response("现在几点了？")
+        >>> print(response)
+        现在是下午三点二十分
     """
-    try:
-        conversation_history.append(
-            {
-                "role": "user",
-                "content": user_input,
-            }
-        )
+    conversation_history.append(
+        {
+            "role": "user",
+            "content": user_input,
+        }
+    )
+    completion = single_chat_completion()
+    while completion.choices[0].message.tool_calls:
+        for tool_call in completion.choices[0].message.tool_calls:
+            name = tool_call.function.name
+            args = json.loads(tool_call.function.arguments)
+
+            result = call_function(name, args)
+            result = json.dumps(result, ensure_ascii=False)
+            conversation_history.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result,
+                }
+            )
         completion = single_chat_completion()
-        while completion.choices[0].message.tool_calls:
-            for tool_call in completion.choices[0].message.tool_calls:
-                name = tool_call.function.name
-                args = json.loads(tool_call.function.arguments)
 
-                result = call_function(name, args)
-                result = json.dumps(result, ensure_ascii=False)
-                conversation_history.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result,
-                    }
-                )
-            completion = single_chat_completion()
-
-        model_response = completion.choices[0].message.content.strip()
-        return model_response
-    except Exception as e:
-        print(f"{type(e).__name__}: {e}")
-        return "抱歉，我现在无法回答这个问题。"
+    model_response = completion.choices[0].message.content.strip()
+    return model_response
 
 
-def start_assistant():
+def start_assistant() -> None:
     """启动语音助手的主循环。
 
-    主要功能：
-    1. 等待唤醒词激活系统
-    2. 进入交互式对话循环
-    3. 处理用户指令并返回响应
-    4. 管理对话状态和异常情况
+    实现以下功能：
+    1. 等待唤醒词激活
+    2. 监听用户语音输入
+    3. 处理语音指令并生成回复
+    4. 通过语音输出回复
+    5. 处理错误和异常情况
 
-    特性：
-    - 每轮对话前自动清理历史记录
-    - 支持多种退出命令（"再见"、"退出"、"结束"）
-    - 错误重试机制（最多3次）
-    - 超时（20秒）自动进入待机模式
-    - 完善的异常处理机制
-    - 系统提示词引导，确保AI回答简洁友好
+    支持的退出命令：
+    - "再见"
+    - "退出"
+    - "结束"
 
-    Returns:
-        None
-
-    Raises:
-        KeyboardInterrupt: 用户手动中断程序时抛出
+    Note:
+        使用Ctrl+C可以强制退出程序
+        连续3次识别失败将自动进入待机状态
     """
     speak("语音助手已开机")
     print(f"Use model: {chat_model}")
