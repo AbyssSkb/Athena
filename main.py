@@ -5,6 +5,9 @@ import pvporcupine
 import pyaudio
 from dotenv import load_dotenv
 from openai import OpenAI
+import openai
+from io import BytesIO
+import tempfile
 from duckduckgo_search import DDGS
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -23,7 +26,10 @@ openai_api_key = os.getenv("OPENAI_API_KEY")
 # OpenAI API基础URL，默认为官方API地址
 openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 # 使用的OpenAI聊天模型，默认为gpt-4o-mini
-chat_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+openai_chat_model = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+openai_transcribe_model = os.getenv("OPENAI_TRANSCRIBE_MODEL", "whisper-1")
+openai_speech_model = "RVC-Boss/GPT-SoVITS"
+openai_speech_voice = "RVC-Boss/GPT-SoVITS:diana"
 # Picovoice唤醒词检测服务的访问密钥
 picovoice_access_key = os.getenv("PICOVOICE_ACCESS_KEY")
 # 语音识别引擎选择，支持'google'或'azure'，默认为google
@@ -52,10 +58,9 @@ recognizer = sr.Recognizer()
 recognizer.operation_timeout = 5
 recognizer.dynamic_energy_threshold = False
 recognizer.pause_threshold = 1.5
-chat_client = OpenAI(
-    api_key=openai_api_key,
-    base_url=openai_base_url,
-)
+chat_client = OpenAI(api_key=openai_api_key, base_url=openai_base_url)
+transcribe_client = OpenAI(api_key=openai_api_key, base_url=openai_base_url)
+speech_client = OpenAI(api_key=openai_api_key, base_url=openai_base_url)
 conversation_history = []
 tools = [
     {
@@ -300,6 +305,13 @@ def listen_for_commands() -> str:
                 location=azure_location,
                 language="zh-CN",
             )[0]
+        case "openai":
+            audio_file = BytesIO(audio.get_wav_data())
+            audio_file.name = "SpeechRecognition_audio.wav"
+            transcription = transcribe_client.audio.transcriptions.create(
+                model=openai_transcribe_model, file=audio_file
+            )
+            command = transcription.text
 
     print(f"User: {command}")
     return command
@@ -339,12 +351,25 @@ def speak(text: str):
             audio_url = f"{gsv_base_url}?text={text}&text_lang={text_lang}&ref_audio_path={ref_audio_path}&prompt_text={prompt_text}&prompt_lang={prompt_lang}&streaming_mode=true&text_split_method=cut0"
             player = vlc.MediaPlayer(audio_url)
             player.play()
-            time.sleep(1)
 
-            while True:
-                state = player.get_state()
-                if state in [vlc.State.Ended, vlc.State.Error]:
-                    break
+            while player.get_state() not in [vlc.State.Ended, vlc.State.Error]:
+                time.sleep(0.5)
+        case "openai":
+            temp_audio_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+            temp_audio_path = temp_audio_file.name
+            with speech_client.audio.speech.with_streaming_response.create(
+                model=openai_speech_model,
+                voice=openai_speech_voice,
+                input=text,
+                response_format="mp3",
+            ) as response:
+                response.iter_bytes()
+                response.stream_to_file(temp_audio_path)
+
+            player = vlc.MediaPlayer(temp_audio_path)
+            player.play()
+
+            while player.get_state() not in [vlc.State.Ended, vlc.State.Error]:
                 time.sleep(0.5)
 
 
@@ -366,15 +391,19 @@ def single_chat_completion():
         - OPENAI_MODEL: 使用的模型名称（默认为"gpt-4-mini"）
     """
     print("正在询问AI")
-    completion = chat_client.chat.completions.create(
-        model=chat_model,
-        messages=conversation_history,
-        tools=tools,
-        timeout=5,
-    )
-    conversation_history.append(completion.choices[0].message)
-    print("询问完毕")
-    return completion
+    try:
+        completion = chat_client.chat.completions.create(
+            model=openai_chat_model,
+            messages=conversation_history,
+            tools=tools,
+            # timeout=10,
+        )
+        conversation_history.append(completion.choices[0].message)
+        print("询问完毕")
+        return completion
+    except openai.APITimeoutError as e:
+        print("API请求错误")
+        raise e
 
 
 def get_model_response(user_input: str) -> str:
@@ -440,7 +469,9 @@ def start_assistant() -> None:
         连续3次识别失败将自动进入待机状态
     """
     speak("语音助手已开机")
-    print(f"Use model: {chat_model}")
+    print(f"Chat model: {openai_chat_model}")
+    print(f"Recognizer engine: {recognizer_engine}")
+    print(f"Speaker engine: {speaker_engine}")
     try:
         while True:
             conversation_history.clear()
@@ -452,8 +483,6 @@ def start_assistant() -> None:
                     "role": "system",
                     "content": f"""
                     你是一个友好的AI语音助手，和用户进行日常对话聊天，请用简洁的语言回答用户的问题。
-                    你的回答应该会以语音呈现而非文本，所以你不应该使用换行符或者其他特殊字符。
-                    请转化为可以直接读出来的汉字，例如‘气温约-4°C，风速为3-4级，相对湿度约13%’应该转成‘气温约零下四摄氏度，风速为三到四级，相对湿度约百分之十三’。
                     当前的日期和时间为{get_current_datetime()}
                     """,
                 }
