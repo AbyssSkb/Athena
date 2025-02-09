@@ -18,16 +18,27 @@ import os
 
 # 加载环境变量
 load_dotenv()
+# OpenAI API密钥
 openai_api_key = os.getenv("OPENAI_API_KEY")
+# OpenAI API基础URL，默认为官方API地址
 openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+# 使用的OpenAI聊天模型，默认为gpt-4o-mini
 chat_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+# Picovoice唤醒词检测服务的访问密钥
 picovoice_access_key = os.getenv("PICOVOICE_ACCESS_KEY")
+# 语音识别引擎选择，支持'google'或'azure'，默认为google
 recognizer_engine = os.getenv("RECOGNIZER_ENGINE", "google")
+# 语音合成引擎选择，支持'pyttsx3'或'gsv'，默认为pyttsx3
 speaker_engine = os.getenv("SPEAKER_ENGINE", "pyttsx3")
+# GPT-SoVITS服务的基础URL，用于gsv语音合成
 gsv_base_url = os.getenv("GSV_BASE_URL")
+# GPT-SoVITS的参考音频路径
 ref_audio_path = os.getenv("REF_AUDIO_PATH")
+# GPT-SoVITS的提示文本
 prompt_text = os.getenv("PROMPT_TEXT")
+# GPT-SoVITS的提示语言，默认为auto
 prompt_lang = os.getenv("PROMPT_LANG", "auto")
+# GPT-SoVITS的文本语言，默认为auto
 text_lang = os.getenv("TEXT_LANG", "auto")
 
 # 初始化
@@ -351,7 +362,7 @@ def single_chat_completion():
     Note:
         需要预先配置以下环境变量：
         - OPENAI_API_KEY: OpenAI API密钥
-        - OPENAI_BASE_URL: OpenAI Base URL（默认为"https://api.openai.com/v1"）
+        - OPENAI_BASE_URL: OpenAI API 基础URL（默认为"https://api.openai.com/v1"）
         - OPENAI_MODEL: 使用的模型名称（默认为"gpt-4-mini"）
     """
     print("正在询问AI")

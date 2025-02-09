@@ -1,6 +1,6 @@
 # 🎤 Athena
 
-> A Chinese voice assistant powered by OpenAI's GPT and Python text-to-speech technology, featuring wake word detection and web search capabilities.
+> A Chinese voice assistant powered by OpenAI's GPT, featuring wake word detection and web search capabilities.
 
 ## ✨ Features
 
