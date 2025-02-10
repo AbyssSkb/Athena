@@ -363,7 +363,6 @@ def speak(text: str):
                 input=text,
                 response_format="mp3",
             ) as response:
-                response.iter_bytes()
                 response.stream_to_file(temp_audio_path)
 
             player = vlc.MediaPlayer(temp_audio_path)
